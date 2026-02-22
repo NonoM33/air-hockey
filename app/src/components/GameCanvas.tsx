@@ -327,7 +327,9 @@ export function GameCanvas({
   const drawPuck = useCallback((ctx: CanvasRenderingContext2D) => {
     if (!gameState?.puck) return;
 
-    const screenPos = toScreen(gameState.puck.position);
+    // Support both {position: {x,y}} and flat {x,y} from server
+    const puckPos = gameState.puck.position || gameState.puck;
+    const screenPos = toScreen(puckPos as Vector2D);
     const puckColor = getPuckColor();
     const puckRadius = GAME_CONFIG.PUCK_RADIUS * SCALE;
 
@@ -366,7 +368,9 @@ export function GameCanvas({
     if (!gameState?.players) return;
 
     gameState.players.forEach((player) => {
-      const screenPos = toScreen(player.paddle.position);
+      // Support both {position: {x,y}} and flat {x,y} from server
+      const paddlePos = player.paddle?.position || player.paddle;
+      const screenPos = toScreen(paddlePos as Vector2D);
       const color = player.side === 'bottom' ? COLORS.player1 : COLORS.player2;
       const isMe = player.side === mySide;
       const paddleRadius = GAME_CONFIG.PADDLE_RADIUS * SCALE;
@@ -433,9 +437,11 @@ export function GameCanvas({
 
       // Update trail
       if (gameState?.puck) {
-        const screenPos = toScreen(gameState.puck.position);
+        const puckPos = gameState.puck.position || gameState.puck;
+        const puckVel = gameState.puck.velocity || { x: 0, y: 0 };
+        const screenPos = toScreen(puckPos as Vector2D);
         const speed = Math.sqrt(
-          gameState.puck.velocity.x ** 2 + gameState.puck.velocity.y ** 2
+          (puckVel.x || 0) ** 2 + (puckVel.y || 0) ** 2
         );
 
         if (speed > 0.5) {
