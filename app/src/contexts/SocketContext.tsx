@@ -69,7 +69,10 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     socket.on('disconnect', () => setIsConnected(false));
     socket.on('connect_error', () => setError('Unable to connect'));
 
-    socket.on('game-state', (state: GameState) => setGameState(state));
+    socket.on('game-state', (state: GameState) => {
+      setGameState(state);
+      if (state.status === 'playing') setCountdown(null);
+    });
     socket.on('matched', (data: MatchData) => { setMatchData(data); setIsWaiting(false); });
     socket.on('room-created', (data: RoomData) => { setRoomData(data); setIsWaiting(true); });
     socket.on('room-joined', (data: MatchData) => { setMatchData(data); setIsWaiting(false); });
