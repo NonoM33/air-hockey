@@ -108,14 +108,9 @@ export class GameScene extends Phaser.Scene {
     this.socket = this.registry.get('socket');
     this.playerSide = this.registry.get('playerSide') || 'bottom';
 
-    // Initialize positions based on side
-    if (this.playerSide === 'bottom') {
-      this.playerPaddlePosition = { x: 250, y: 650 };
-      this.opponentPaddlePosition = { x: 250, y: 150 };
-    } else {
-      this.playerPaddlePosition = { x: 250, y: 150 };
-      this.opponentPaddlePosition = { x: 250, y: 650 };
-    }
+    // Both players always see themselves at the bottom
+    this.playerPaddlePosition = { x: 250, y: 650 };
+    this.opponentPaddlePosition = { x: 250, y: 150 };
 
     // Create game elements
     this.createTable();
@@ -450,15 +445,9 @@ export class GameScene extends Phaser.Scene {
     let x = pointer.x;
     let y = pointer.y;
 
-    // Constrain to player's half
+    // Both players always play from the bottom half of their screen
     const halfHeight = TABLE_HEIGHT / 2;
-
-    if (this.playerSide === 'bottom') {
-      y = Phaser.Math.Clamp(y, halfHeight + PADDLE_RADIUS, TABLE_HEIGHT - BORDER_WIDTH - PADDLE_RADIUS);
-    } else {
-      // For top player, we rotate the view, so their "bottom" is actually the top
-      y = Phaser.Math.Clamp(y, BORDER_WIDTH + PADDLE_RADIUS, halfHeight - PADDLE_RADIUS);
-    }
+    y = Phaser.Math.Clamp(y, halfHeight + PADDLE_RADIUS, TABLE_HEIGHT - BORDER_WIDTH - PADDLE_RADIUS);
 
     // Constrain X to table bounds
     x = Phaser.Math.Clamp(x, BORDER_WIDTH + PADDLE_RADIUS, TABLE_WIDTH - BORDER_WIDTH - PADDLE_RADIUS);

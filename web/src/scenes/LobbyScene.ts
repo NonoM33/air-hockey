@@ -353,12 +353,17 @@ export class LobbyScene extends Phaser.Scene {
     this.codeInput.value = '';
     this.codeInput.focus();
 
+    let submitted = false;
+
     const handleSubmit = () => {
+      if (submitted) return;
       const code = this.codeInput.value.trim().toUpperCase();
       if (code.length === 4) {
+        submitted = true;
         this.codeOverlay.classList.remove('active');
-        this.joinRoom(code);
         this.codeInput.removeEventListener('keydown', handleKeydown);
+        this.codeInput.removeEventListener('input', handleInput);
+        this.joinRoom(code);
       }
     };
 
@@ -368,16 +373,18 @@ export class LobbyScene extends Phaser.Scene {
       } else if (e.key === 'Escape') {
         this.codeOverlay.classList.remove('active');
         this.codeInput.removeEventListener('keydown', handleKeydown);
+        this.codeInput.removeEventListener('input', handleInput);
+      }
+    };
+
+    const handleInput = () => {
+      if (this.codeInput.value.length === 4) {
+        handleSubmit();
       }
     };
 
     this.codeInput.addEventListener('keydown', handleKeydown);
-
-    this.codeInput.addEventListener('input', () => {
-      if (this.codeInput.value.length === 4) {
-        handleSubmit();
-      }
-    }, { once: true });
+    this.codeInput.addEventListener('input', handleInput);
   }
 
   private joinRoom(code: string): void {
