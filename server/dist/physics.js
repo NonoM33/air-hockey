@@ -61,31 +61,38 @@ function updatePhysics(puck, players, deltaTime) {
         if (dist < minDist) {
             // Collision detected
             const normal = normalizeVector(subtractVectors(puck.position, paddle.position));
-            // Reflect velocity
-            const relativeVelocity = puck.velocity;
-            const velocityAlongNormal = dotProduct(relativeVelocity, normal);
-            // Only resolve if moving towards paddle
-            if (velocityAlongNormal < 0) {
-                // Reflect puck velocity
-                const reflected = subtractVectors(relativeVelocity, scaleVector(normal, 2 * velocityAlongNormal));
-                // Add paddle velocity to transfer momentum (the key to responsive hits)
+            // Use relative velocity (puck - paddle) to check approach
+            const relVelocity = subtractVectors(puck.velocity, paddle.velocity);
+            const relAlongNormal = dotProduct(relVelocity, normal);
+            // Resolve if objects are approaching each other (relative motion)
+            if (relAlongNormal < 0) {
+                // Reflect relative velocity
+                const reflected = subtractVectors(puck.velocity, scaleVector(normal, 2 * relAlongNormal));
+                // Add paddle velocity for momentum transfer
                 const paddleSpeed = vectorLength(paddle.velocity);
                 const paddleInfluence = scaleVector(paddle.velocity, 0.8);
                 puck.velocity = addVectors(reflected, paddleInfluence);
-                // Boost based on paddle speed — harder hit = faster puck
+                // Boost based on paddle speed
                 const speedBoost = Math.max(PADDLE_HIT_BOOST, 1.0 + paddleSpeed * 0.15);
                 puck.velocity = scaleVector(puck.velocity, Math.min(speedBoost, 3.0));
                 puck.velocity = clampSpeed(puck.velocity, MAX_PUCK_SPEED);
-                // Separate puck from paddle
-                const overlap = minDist - dist;
-                puck.position = addVectors(puck.position, scaleVector(normal, overlap + 1));
-                collisions.push({
-                    type: 'paddle',
-                    position: { ...puck.position },
-                    velocity: vectorLength(puck.velocity),
-                    playerId: player.id,
-                });
             }
+            else {
+                // Still overlapping but not approaching — just push puck away with paddle momentum
+                if (vectorLength(paddle.velocity) > 1) {
+                    puck.velocity = addVectors(puck.velocity, scaleVector(paddle.velocity, 1.2));
+                    puck.velocity = clampSpeed(puck.velocity, MAX_PUCK_SPEED);
+                }
+            }
+            // Always separate puck from paddle
+            const overlap = minDist - dist;
+            puck.position = addVectors(puck.position, scaleVector(normal, overlap + 1));
+            collisions.push({
+                type: 'paddle',
+                position: { ...puck.position },
+                velocity: vectorLength(puck.velocity),
+                playerId: player.id,
+            });
         }
     }
     // Wall collisions (left/right)
