@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useRef, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { SERVER_URL } from '../constants/config';
 import {
@@ -24,8 +24,6 @@ interface SocketContextValue {
   error: string | null;
   isWaiting: boolean;
   opponentDisconnected: boolean;
-
-  // Actions
   joinQueue: (playerName: string) => void;
   leaveQueue: () => void;
   createRoom: (playerName: string) => void;
@@ -33,15 +31,18 @@ interface SocketContextValue {
   movePaddle: (position: Vector2D) => void;
   leaveRoom: () => void;
   clearGoalData: () => void;
+  resetState: () => void;
 }
 
 const SocketContext = createContext<SocketContextValue | null>(null);
 
-interface SocketProviderProps {
-  children: ReactNode;
+export function useSocket(): SocketContextValue {
+  const ctx = useContext(SocketContext);
+  if (!ctx) throw new Error('useSocket must be inside SocketProvider');
+  return ctx;
 }
 
-export function SocketProvider({ children }: SocketProviderProps) {
+export function SocketProvider({ children }: { children: React.ReactNode }) {
   const socketRef = useRef<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -55,115 +56,50 @@ export function SocketProvider({ children }: SocketProviderProps) {
   const [isWaiting, setIsWaiting] = useState(false);
   const [opponentDisconnected, setOpponentDisconnected] = useState(false);
 
-  // Initialize socket connection once on mount
   useEffect(() => {
-    console.log('[SocketProvider] Initializing socket connection to', SERVER_URL);
-
     const socket = io(SERVER_URL, {
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'],
       reconnection: true,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: 10,
       reconnectionDelay: 1000,
     });
-
     socketRef.current = socket;
 
-    socket.on('connect', () => {
-      console.log('[SocketProvider] Connected to server, socket id:', socket.id);
-      setIsConnected(true);
-      setError(null);
-    });
+    socket.on('connect', () => { setIsConnected(true); setError(null); });
+    socket.on('disconnect', () => setIsConnected(false));
+    socket.on('connect_error', () => setError('Unable to connect'));
 
-    socket.on('disconnect', () => {
-      console.log('[SocketProvider] Disconnected from server');
-      setIsConnected(false);
-    });
+    socket.on('game-state', (state: GameState) => setGameState(state));
+    socket.on('matched', (data: MatchData) => { setMatchData(data); setIsWaiting(false); });
+    socket.on('room-created', (data: RoomData) => { setRoomData(data); setIsWaiting(true); });
+    socket.on('room-joined', (data: MatchData) => { setMatchData(data); setIsWaiting(false); });
+    socket.on('waiting-for-opponent', () => setIsWaiting(true));
+    socket.on('countdown', (count: number) => setCountdown(count));
+    socket.on('goal', (data: GoalData) => setGoalData(data));
+    socket.on('game-over', (data: GameOverData) => setGameOverData(data));
+    socket.on('collision', (data: CollisionEvent) => setLastCollision(data));
+    socket.on('opponent-disconnected', () => setOpponentDisconnected(true));
+    socket.on('error', (msg: string) => setError(msg));
 
-    socket.on('connect_error', (err) => {
-      console.error('[SocketProvider] Connection error:', err);
-      setError('Unable to connect to server');
-    });
-
-    socket.on('game-state', (state: GameState) => {
-      setGameState(state);
-    });
-
-    socket.on('matched', (data: MatchData) => {
-      console.log('[SocketProvider] Matched!', data);
-      setMatchData(data);
-      setIsWaiting(false);
-    });
-
-    socket.on('room-created', (data: RoomData) => {
-      console.log('[SocketProvider] Room created:', data);
-      setRoomData(data);
-      setIsWaiting(true);
-    });
-
-    socket.on('room-joined', (data: MatchData) => {
-      console.log('[SocketProvider] Room joined:', data);
-      setMatchData(data);
-      setIsWaiting(false);
-    });
-
-    socket.on('waiting-for-opponent', () => {
-      console.log('[SocketProvider] Waiting for opponent');
-      setIsWaiting(true);
-    });
-
-    socket.on('countdown', (count: number) => {
-      setCountdown(count);
-    });
-
-    socket.on('goal', (data: GoalData) => {
-      setGoalData(data);
-    });
-
-    socket.on('game-over', (data: GameOverData) => {
-      setGameOverData(data);
-    });
-
-    socket.on('collision', (data: CollisionEvent) => {
-      setLastCollision(data);
-    });
-
-    socket.on('opponent-disconnected', () => {
-      setOpponentDisconnected(true);
-    });
-
-    socket.on('error', (message: string) => {
-      console.error('[SocketProvider] Server error:', message);
-      setError(message);
-    });
-
-    // Cleanup on unmount (app close)
-    return () => {
-      console.log('[SocketProvider] Cleaning up socket connection');
-      socket.disconnect();
-    };
+    return () => { socket.disconnect(); };
   }, []);
 
   const joinQueue = useCallback((playerName: string) => {
-    console.log('[SocketProvider] joinQueue', playerName);
     socketRef.current?.emit('join-queue', { playerName });
-    setIsWaiting(true);
-    setError(null);
+    setIsWaiting(true); setError(null);
   }, []);
 
   const leaveQueue = useCallback(() => {
-    console.log('[SocketProvider] leaveQueue');
     socketRef.current?.emit('leave-queue');
     setIsWaiting(false);
   }, []);
 
   const createRoom = useCallback((playerName: string) => {
-    console.log('[SocketProvider] createRoom', playerName);
     socketRef.current?.emit('create-room', { playerName });
     setError(null);
   }, []);
 
   const joinRoom = useCallback((code: string, playerName: string) => {
-    console.log('[SocketProvider] joinRoom', code, playerName);
     socketRef.current?.emit('join-room', { code, playerName });
     setError(null);
   }, []);
@@ -173,54 +109,26 @@ export function SocketProvider({ children }: SocketProviderProps) {
   }, []);
 
   const leaveRoom = useCallback(() => {
-    console.log('[SocketProvider] leaveRoom');
     socketRef.current?.emit('leave-room');
-    setGameState(null);
-    setMatchData(null);
-    setRoomData(null);
-    setCountdown(null);
-    setGoalData(null);
-    setGameOverData(null);
-    setOpponentDisconnected(false);
+    resetState();
   }, []);
 
-  const clearGoalData = useCallback(() => {
-    setGoalData(null);
-  }, []);
+  const clearGoalData = useCallback(() => setGoalData(null), []);
 
-  const value: SocketContextValue = {
-    socket: socketRef.current,
-    isConnected,
-    gameState,
-    matchData,
-    roomData,
-    countdown,
-    goalData,
-    gameOverData,
-    lastCollision,
-    error,
-    isWaiting,
-    opponentDisconnected,
-    joinQueue,
-    leaveQueue,
-    createRoom,
-    joinRoom,
-    movePaddle,
-    leaveRoom,
-    clearGoalData,
-  };
+  const resetState = useCallback(() => {
+    setGameState(null); setMatchData(null); setRoomData(null);
+    setCountdown(null); setGoalData(null); setGameOverData(null);
+    setOpponentDisconnected(false); setIsWaiting(false);
+  }, []);
 
   return (
-    <SocketContext.Provider value={value}>
+    <SocketContext.Provider value={{
+      socket: socketRef.current, isConnected, gameState, matchData, roomData,
+      countdown, goalData, gameOverData, lastCollision, error, isWaiting,
+      opponentDisconnected, joinQueue, leaveQueue, createRoom, joinRoom,
+      movePaddle, leaveRoom, clearGoalData, resetState,
+    }}>
       {children}
     </SocketContext.Provider>
   );
-}
-
-export function useSocketContext(): SocketContextValue {
-  const context = useContext(SocketContext);
-  if (!context) {
-    throw new Error('useSocketContext must be used within a SocketProvider');
-  }
-  return context;
 }
