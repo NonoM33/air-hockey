@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#050510">
+  <title>Air Hockey</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #050510;
+      touch-action: none;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #game-container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    canvas {
+      display: block;
+      touch-action: none;
+    }
+    #name-input-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      pointer-events: none;
+    }
+    #name-input-overlay.active {
+      display: flex;
+      pointer-events: auto;
+    }
+    #name-input {
+      background: rgba(5, 5, 16, 0.95);
+      border: 2px solid #8B5CF6;
+      border-radius: 8px;
+      color: #00FFFF;
+      font-family: 'Courier New', monospace;
+      font-size: 18px;
+      padding: 12px 20px;
+      text-align: center;
+      width: 250px;
+      outline: none;
+      box-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
+    }
+    #name-input::placeholder {
+      color: rgba(0, 255, 255, 0.5);
+    }
+    #name-input:focus {
+      border-color: #00FFFF;
+      box-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
+    }
+    #code-input-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      pointer-events: none;
+    }
+    #code-input-overlay.active {
+      display: flex;
+      pointer-events: auto;
+    }
+    #code-input {
+      background: rgba(5, 5, 16, 0.95);
+      border: 2px solid #FF00FF;
+      border-radius: 8px;
+      color: #FF00FF;
+      font-family: 'Courier New', monospace;
+      font-size: 24px;
+      font-weight: bold;
+      padding: 12px 20px;
+      text-align: center;
+      width: 200px;
+      letter-spacing: 8px;
+      text-transform: uppercase;
+      outline: none;
+      box-shadow: 0 0 20px rgba(255, 0, 255, 0.5);
+    }
+    #code-input::placeholder {
+      color: rgba(255, 0, 255, 0.5);
+      letter-spacing: 4px;
+    }
+    #code-input:focus {
+      box-shadow: 0 0 30px rgba(255, 0, 255, 0.7);
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container"></div>
+  <div id="name-input-overlay">
+    <input type="text" id="name-input" placeholder="Enter name" maxlength="12" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+  </div>
+  <div id="code-input-overlay">
+    <input type="text" id="code-input" placeholder="CODE" maxlength="4" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false">
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

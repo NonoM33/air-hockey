@@ -1,12 +1,7 @@
-FROM node:20-alpine
+FROM nginx:alpine
 
-WORKDIR /app
+COPY web/dist /usr/share/nginx/html
 
-COPY server/package*.json ./
-RUN npm ci --production
+EXPOSE 80
 
-COPY server/dist/ ./dist/
-
-EXPOSE 3002
-
-CMD ["node", "dist/index.js"]
+CMD ["nginx", "-g", "daemon off;"]
