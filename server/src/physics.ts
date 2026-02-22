@@ -88,13 +88,21 @@ export function updatePhysics(puck: Puck, players: Player[], deltaTime: number):
 
       // Only resolve if moving towards paddle
       if (velocityAlongNormal < 0) {
-        // Calculate new velocity with boost
-        const newVelocity = subtractVectors(
+        // Reflect puck velocity
+        const reflected = subtractVectors(
           relativeVelocity,
           scaleVector(normal, 2 * velocityAlongNormal)
         );
 
-        puck.velocity = scaleVector(newVelocity, PADDLE_HIT_BOOST);
+        // Add paddle velocity to transfer momentum (the key to responsive hits)
+        const paddleSpeed = vectorLength(paddle.velocity);
+        const paddleInfluence = scaleVector(paddle.velocity, 0.8);
+        
+        puck.velocity = addVectors(reflected, paddleInfluence);
+        
+        // Boost based on paddle speed — harder hit = faster puck
+        const speedBoost = Math.max(PADDLE_HIT_BOOST, 1.0 + paddleSpeed * 0.15);
+        puck.velocity = scaleVector(puck.velocity, Math.min(speedBoost, 3.0));
         puck.velocity = clampSpeed(puck.velocity, MAX_PUCK_SPEED);
 
         // Separate puck from paddle
@@ -195,7 +203,7 @@ export function createInitialPuck(): Puck {
   const direction = Math.random() > 0.5 ? 1 : -1;
   return {
     position: { x: TABLE_WIDTH / 2, y: TABLE_HEIGHT / 2 },
-    velocity: { x: (Math.random() - 0.5) * 3, y: direction * 4 },
+    velocity: { x: (Math.random() - 0.5) * 6, y: direction * 10 },
     radius: PUCK_RADIUS,
   };
 }

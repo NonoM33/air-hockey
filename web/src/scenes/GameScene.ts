@@ -540,18 +540,8 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private _logCount = 0;
   private handleGameState(state: GameState): void {
     const { TABLE_WIDTH, TABLE_HEIGHT } = GAME_CONFIG;
-    if (this._logCount++ % 60 === 0) {
-      console.log('gameState', JSON.stringify({
-        puck: state.puck?.position,
-        puckV: state.puck?.velocity,
-        players: state.players?.map(p => ({ name: p.name, side: p.side, paddle: p.paddle?.position })),
-        status: state.status,
-        mySide: this.playerSide
-      }));
-    }
 
     // Update puck
     let puckX = state.puck.position.x;

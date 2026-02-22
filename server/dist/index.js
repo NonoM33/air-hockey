@@ -49,6 +49,8 @@ function createPlayer(socketId, name, side) {
         comboCount: 0,
         paddle: {
             position: { x: TABLE_WIDTH / 2, y },
+            previousPosition: { x: TABLE_WIDTH / 2, y },
+            velocity: { x: 0, y: 0 },
             radius: PADDLE_RADIUS,
             playerId: socketId,
         },
@@ -291,8 +293,14 @@ io.on('connection', (socket) => {
         const player = room.players.get(socket.id);
         if (!player)
             return;
-        // Clamp position to player's side
-        player.paddle.position = (0, physics_1.clampPaddlePosition)(position, player.side);
+        // Track velocity from movement
+        const newPos = (0, physics_1.clampPaddlePosition)(position, player.side);
+        player.paddle.velocity = {
+            x: newPos.x - player.paddle.position.x,
+            y: newPos.y - player.paddle.position.y,
+        };
+        player.paddle.previousPosition = { ...player.paddle.position };
+        player.paddle.position = newPos;
     });
     socket.on('leave-room', () => {
         cleanupPlayer(socket.id);

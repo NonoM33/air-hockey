@@ -4,6 +4,8 @@ export interface Vector2D {
 }
 export interface Paddle {
     position: Vector2D;
+    previousPosition: Vector2D;
+    velocity: Vector2D;
     radius: number;
     playerId: string;
 }

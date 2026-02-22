@@ -7,6 +7,8 @@ export interface Vector2D {
 
 export interface Paddle {
   position: Vector2D;
+  previousPosition: Vector2D;
+  velocity: Vector2D;
   radius: number;
   playerId: string;
 }
@@ -91,10 +93,10 @@ export const GAME_CONFIG = {
   GOAL_WIDTH: 150,
 
   // Physics
-  FRICTION: 0.995,
-  RESTITUTION: 0.9,
-  MAX_PUCK_SPEED: 25,
-  PADDLE_HIT_BOOST: 1.3,
+  FRICTION: 0.999,
+  RESTITUTION: 0.95,
+  MAX_PUCK_SPEED: 60,
+  PADDLE_HIT_BOOST: 2.0,
 
   // Game rules
   WINNING_SCORE: 7,
