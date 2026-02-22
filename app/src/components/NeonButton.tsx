@@ -131,13 +131,15 @@ export function NeonInput({
       ]}
     >
       <TextInput
-        style={[styles.input, { color }]}
+        style={[styles.input, { color, minHeight: 40 }]}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor={COLORS.textDim}
-        autoCapitalize="none"
+        autoCapitalize="words"
         autoCorrect={false}
+        maxLength={15}
+        returnKeyType="done"
       />
     </View>
   );
