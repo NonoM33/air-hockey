@@ -167,7 +167,7 @@ function handleGoal(room, scoredOn) {
 // Start countdown
 async function startCountdown(room) {
     room.gameState.status = 'countdown';
-    for (let i = types_1.GAME_CONFIG.COUNTDOWN_SECONDS; i >= 1; i--) {
+    for (let i = types_1.GAME_CONFIG.COUNTDOWN_SECONDS; i >= 0; i--) {
         io.to(room.id).emit('countdown', i);
         await new Promise((resolve) => setTimeout(resolve, 1000));
     }
