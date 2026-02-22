@@ -1,24 +1,10 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { View, StyleSheet, Dimensions, GestureResponderEvent } from 'react-native';
-import {
-  Canvas,
-  Circle,
-  LinearGradient,
-  RadialGradient,
-  Rect,
-  vec,
-  Line,
-  Group,
-  RoundedRect,
-  BlurMask,
-} from '@shopify/react-native-skia';
+import { View, StyleSheet, Dimensions, Platform } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  withSpring,
   withSequence,
   withTiming,
-  runOnJS,
 } from 'react-native-reanimated';
 import { COLORS } from '../constants/theme';
 import { GAME_CONFIG } from '../constants/config';
@@ -80,12 +66,14 @@ export function GameCanvas({
   onPaddleMove,
   lastCollision,
 }: GameCanvasProps) {
-  const [trail, setTrail] = useState<TrailPoint[]>([]);
-  const [particles, setParticles] = useState<Particle[]>([]);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const containerRef = useRef<View | null>(null);
   const trailRef = useRef<TrailPoint[]>([]);
   const particlesRef = useRef<Particle[]>([]);
+  const animationFrameRef = useRef<number>(0);
+  const lastCollisionRef = useRef<CollisionEvent | null>(null);
 
-  // Screen shake
+  // Screen shake values
   const shakeX = useSharedValue(0);
   const shakeY = useSharedValue(0);
 
@@ -110,38 +98,40 @@ export function GameCanvas({
     return { x, y };
   }, [mySide]);
 
-  // Handle touch for paddle movement
-  const handleTouch = useCallback((event: GestureResponderEvent) => {
-    const { pageX, pageY } = event.nativeEvent;
-    const gamePos = toGame({ x: pageX, y: pageY });
+  // Get puck color based on speed
+  const getPuckColor = useCallback(() => {
+    if (!gameState) return COLORS.puck;
+    const speed = gameState.puckSpeed;
+    if (speed > GAME_CONFIG.SUPER_FAST_SPEED_THRESHOLD) return COLORS.puckSuperFast;
+    if (speed > GAME_CONFIG.FAST_SPEED_THRESHOLD) return COLORS.puckFast;
+    return COLORS.puck;
+  }, [gameState]);
+
+  // Handle touch/mouse events for paddle movement
+  const handlePointerEvent = useCallback((event: React.PointerEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    let clientX: number;
+    let clientY: number;
+
+    if ('touches' in event) {
+      // Touch event
+      const touch = event.touches[0];
+      if (!touch) return;
+      clientX = touch.clientX;
+      clientY = touch.clientY;
+    } else {
+      // Pointer event
+      clientX = event.clientX;
+      clientY = event.clientY;
+    }
+
+    const gamePos = toGame({ x: clientX, y: clientY });
     onPaddleMove(gamePos);
   }, [toGame, onPaddleMove]);
 
-  // Update puck trail
-  useEffect(() => {
-    if (gameState?.puck) {
-      const screenPos = toScreen(gameState.puck.position);
-      const speed = Math.sqrt(
-        gameState.puck.velocity.x ** 2 + gameState.puck.velocity.y ** 2
-      );
-
-      // Only add to trail if puck is moving
-      if (speed > 0.5) {
-        trailRef.current = [
-          { x: screenPos.x, y: screenPos.y, opacity: 1 },
-          ...trailRef.current.slice(0, GAME_CONFIG.TRAIL_LENGTH - 1).map(p => ({
-            ...p,
-            opacity: p.opacity * GAME_CONFIG.TRAIL_FADE_SPEED,
-          })),
-        ].filter(p => p.opacity > 0.1);
-        setTrail([...trailRef.current]);
-      }
-    }
-  }, [gameState?.puck?.position, toScreen]);
-
   // Handle collision effects
   useEffect(() => {
-    if (lastCollision) {
+    if (lastCollision && lastCollision !== lastCollisionRef.current) {
+      lastCollisionRef.current = lastCollision;
       const screenPos = toScreen(lastCollision.position);
 
       // Add particles
@@ -166,7 +156,6 @@ export function GameCanvas({
       }
 
       particlesRef.current = [...particlesRef.current, ...newParticles];
-      setParticles([...particlesRef.current]);
 
       // Screen shake for goals
       if (lastCollision.type === 'goal') {
@@ -188,9 +177,222 @@ export function GameCanvas({
     }
   }, [lastCollision, toScreen, shakeX, shakeY]);
 
-  // Animate particles
+  // Draw functions
+  const drawTable = useCallback((ctx: CanvasRenderingContext2D) => {
+    // Table background gradient
+    const gradient = ctx.createLinearGradient(OFFSET_X, OFFSET_Y, OFFSET_X, OFFSET_Y + CANVAS_HEIGHT);
+    gradient.addColorStop(0, '#0a0a25');
+    gradient.addColorStop(0.5, '#050510');
+    gradient.addColorStop(1, '#0a0a25');
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(OFFSET_X, OFFSET_Y, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+    // Center line with glow
+    ctx.save();
+    ctx.shadowColor = COLORS.violet;
+    ctx.shadowBlur = 8;
+    ctx.strokeStyle = COLORS.violet;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(OFFSET_X, OFFSET_Y + CANVAS_HEIGHT / 2);
+    ctx.lineTo(OFFSET_X + CANVAS_WIDTH, OFFSET_Y + CANVAS_HEIGHT / 2);
+    ctx.stroke();
+    ctx.restore();
+
+    // Center circle with glow
+    ctx.save();
+    ctx.shadowColor = COLORS.violet;
+    ctx.shadowBlur = 8;
+    ctx.strokeStyle = COLORS.violet;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(OFFSET_X + CANVAS_WIDTH / 2, OFFSET_Y + CANVAS_HEIGHT / 2, 60 * SCALE, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    // Border with glow
+    ctx.save();
+    ctx.shadowColor = COLORS.violet;
+    ctx.shadowBlur = 12;
+    ctx.strokeStyle = COLORS.violet;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.roundRect(OFFSET_X, OFFSET_Y, CANVAS_WIDTH, CANVAS_HEIGHT, 8);
+    ctx.stroke();
+    ctx.restore();
+
+    // Goals
+    const goalWidth = GAME_CONFIG.GOAL_WIDTH * SCALE;
+    const goalX = CANVAS_WIDTH / 2 - goalWidth / 2 + OFFSET_X;
+
+    // Top goal (magenta)
+    ctx.save();
+    ctx.shadowColor = COLORS.magenta;
+    ctx.shadowBlur = 16;
+    ctx.fillStyle = COLORS.magenta;
+    ctx.fillRect(goalX, OFFSET_Y - 10, goalWidth, 15);
+    ctx.restore();
+
+    // Bottom goal (cyan)
+    ctx.save();
+    ctx.shadowColor = COLORS.cyan;
+    ctx.shadowBlur = 16;
+    ctx.fillStyle = COLORS.cyan;
+    ctx.fillRect(goalX, OFFSET_Y + CANVAS_HEIGHT - 5, goalWidth, 15);
+    ctx.restore();
+  }, []);
+
+  const drawTrail = useCallback((ctx: CanvasRenderingContext2D) => {
+    trailRef.current.forEach((point) => {
+      ctx.save();
+      ctx.shadowColor = '#FFFFFF';
+      ctx.shadowBlur = 12;
+      ctx.globalAlpha = point.opacity * 0.3;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, GAME_CONFIG.PUCK_RADIUS * SCALE * point.opacity * 0.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
+  }, []);
+
+  const drawParticles = useCallback((ctx: CanvasRenderingContext2D) => {
+    particlesRef.current.forEach((particle) => {
+      ctx.save();
+      ctx.shadowColor = particle.color;
+      ctx.shadowBlur = 6;
+      ctx.globalAlpha = particle.life;
+      ctx.fillStyle = particle.color;
+      ctx.beginPath();
+      ctx.arc(particle.x, particle.y, particle.size * particle.life, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
+  }, []);
+
+  const drawPuck = useCallback((ctx: CanvasRenderingContext2D) => {
+    if (!gameState?.puck) return;
+
+    const screenPos = toScreen(gameState.puck.position);
+    const puckColor = getPuckColor();
+    const puckRadius = GAME_CONFIG.PUCK_RADIUS * SCALE;
+
+    // Outer glow
+    ctx.save();
+    ctx.shadowColor = puckColor;
+    ctx.shadowBlur = 30;
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = puckColor;
+    ctx.beginPath();
+    ctx.arc(screenPos.x, screenPos.y, puckRadius * 1.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Main puck
+    ctx.save();
+    ctx.shadowColor = puckColor;
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = puckColor;
+    ctx.beginPath();
+    ctx.arc(screenPos.x, screenPos.y, puckRadius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Inner highlight
+    ctx.save();
+    ctx.globalAlpha = 0.8;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.arc(screenPos.x, screenPos.y, puckRadius * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }, [gameState, toScreen, getPuckColor]);
+
+  const drawPaddles = useCallback((ctx: CanvasRenderingContext2D) => {
+    if (!gameState?.players) return;
+
+    gameState.players.forEach((player) => {
+      const screenPos = toScreen(player.paddle.position);
+      const color = player.side === 'bottom' ? COLORS.player1 : COLORS.player2;
+      const isMe = player.side === mySide;
+      const paddleRadius = GAME_CONFIG.PADDLE_RADIUS * SCALE;
+
+      // Outer glow
+      ctx.save();
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 40;
+      ctx.globalAlpha = isMe ? 0.4 : 0.2;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(screenPos.x, screenPos.y, paddleRadius * 1.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Main paddle with radial gradient
+      ctx.save();
+      const gradient = ctx.createRadialGradient(
+        screenPos.x, screenPos.y, 0,
+        screenPos.x, screenPos.y, paddleRadius
+      );
+      gradient.addColorStop(0, color);
+      gradient.addColorStop(1, color + '99');
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(screenPos.x, screenPos.y, paddleRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Inner circle (dark center)
+      ctx.save();
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = '#000000';
+      ctx.beginPath();
+      ctx.arc(screenPos.x, screenPos.y, paddleRadius * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
+  }, [gameState, mySide, toScreen]);
+
+  // Main render loop
   useEffect(() => {
-    const interval = setInterval(() => {
+    if (Platform.OS !== 'web') return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Set canvas size
+    canvas.width = SCREEN_WIDTH;
+    canvas.height = SCREEN_HEIGHT;
+
+    const render = () => {
+      // Clear canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = COLORS.background;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Update trail
+      if (gameState?.puck) {
+        const screenPos = toScreen(gameState.puck.position);
+        const speed = Math.sqrt(
+          gameState.puck.velocity.x ** 2 + gameState.puck.velocity.y ** 2
+        );
+
+        if (speed > 0.5) {
+          trailRef.current = [
+            { x: screenPos.x, y: screenPos.y, opacity: 1 },
+            ...trailRef.current.slice(0, GAME_CONFIG.TRAIL_LENGTH - 1).map(p => ({
+              ...p,
+              opacity: p.opacity * GAME_CONFIG.TRAIL_FADE_SPEED,
+            })),
+          ].filter(p => p.opacity > 0.1);
+        }
+      }
+
+      // Update particles
       particlesRef.current = particlesRef.current
         .map(p => ({
           ...p,
@@ -200,11 +402,25 @@ export function GameCanvas({
           life: p.life - 0.03,
         }))
         .filter(p => p.life > 0);
-      setParticles([...particlesRef.current]);
-    }, 16);
 
-    return () => clearInterval(interval);
-  }, []);
+      // Draw everything
+      drawTable(ctx);
+      drawTrail(ctx);
+      drawParticles(ctx);
+      drawPuck(ctx);
+      drawPaddles(ctx);
+
+      animationFrameRef.current = requestAnimationFrame(render);
+    };
+
+    render();
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [gameState, toScreen, drawTable, drawTrail, drawParticles, drawPuck, drawPaddles]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
@@ -213,232 +429,31 @@ export function GameCanvas({
     ],
   }));
 
-  // Get puck color based on speed
-  const getPuckColor = () => {
-    if (!gameState) return COLORS.puck;
-    const speed = gameState.puckSpeed;
-    if (speed > GAME_CONFIG.SUPER_FAST_SPEED_THRESHOLD) return COLORS.puckSuperFast;
-    if (speed > GAME_CONFIG.FAST_SPEED_THRESHOLD) return COLORS.puckFast;
-    return COLORS.puck;
-  };
-
-  // Render table
-  const renderTable = () => {
-    const goalWidth = GAME_CONFIG.GOAL_WIDTH * SCALE;
-    const goalX = CANVAS_WIDTH / 2 - goalWidth / 2 + OFFSET_X;
-
+  // Web-specific canvas rendering
+  if (Platform.OS === 'web') {
     return (
-      <>
-        {/* Table background */}
-        <Rect
-          x={OFFSET_X}
-          y={OFFSET_Y}
-          width={CANVAS_WIDTH}
-          height={CANVAS_HEIGHT}
-        >
-          <LinearGradient
-            start={vec(OFFSET_X, OFFSET_Y)}
-            end={vec(OFFSET_X, OFFSET_Y + CANVAS_HEIGHT)}
-            colors={['#0a0a25', '#050510', '#0a0a25']}
-          />
-        </Rect>
-
-        {/* Center line */}
-        <Line
-          p1={vec(OFFSET_X, OFFSET_Y + CANVAS_HEIGHT / 2)}
-          p2={vec(OFFSET_X + CANVAS_WIDTH, OFFSET_Y + CANVAS_HEIGHT / 2)}
-          color={COLORS.violet}
-          strokeWidth={2}
-          style="stroke"
-        >
-          <BlurMask blur={4} style="normal" />
-        </Line>
-
-        {/* Center circle */}
-        <Circle
-          cx={OFFSET_X + CANVAS_WIDTH / 2}
-          cy={OFFSET_Y + CANVAS_HEIGHT / 2}
-          r={60 * SCALE}
-          color={COLORS.violet}
-          style="stroke"
-          strokeWidth={2}
-        >
-          <BlurMask blur={4} style="normal" />
-        </Circle>
-
-        {/* Border */}
-        <RoundedRect
-          x={OFFSET_X}
-          y={OFFSET_Y}
-          width={CANVAS_WIDTH}
-          height={CANVAS_HEIGHT}
-          r={8}
-          color={COLORS.violet}
-          style="stroke"
-          strokeWidth={4}
-        >
-          <BlurMask blur={6} style="normal" />
-        </RoundedRect>
-
-        {/* Goals */}
-        {/* Top goal */}
-        <Rect
-          x={goalX}
-          y={OFFSET_Y - 10}
-          width={goalWidth}
-          height={15}
-          color={COLORS.magenta}
-        >
-          <BlurMask blur={8} style="normal" />
-        </Rect>
-
-        {/* Bottom goal */}
-        <Rect
-          x={goalX}
-          y={OFFSET_Y + CANVAS_HEIGHT - 5}
-          width={goalWidth}
-          height={15}
-          color={COLORS.cyan}
-        >
-          <BlurMask blur={8} style="normal" />
-        </Rect>
-      </>
-    );
-  };
-
-  // Render puck trail
-  const renderTrail = () => {
-    return trail.map((point, index) => (
-      <Circle
-        key={`trail-${index}`}
-        cx={point.x}
-        cy={point.y}
-        r={GAME_CONFIG.PUCK_RADIUS * SCALE * point.opacity * 0.8}
-        color={`rgba(255, 255, 255, ${point.opacity * 0.3})`}
-      >
-        <BlurMask blur={6} style="normal" />
-      </Circle>
-    ));
-  };
-
-  // Render particles
-  const renderParticles = () => {
-    return particles.map((particle, index) => (
-      <Circle
-        key={`particle-${index}`}
-        cx={particle.x}
-        cy={particle.y}
-        r={particle.size * particle.life}
-        color={particle.color}
-        opacity={particle.life}
-      >
-        <BlurMask blur={3} style="normal" />
-      </Circle>
-    ));
-  };
-
-  // Render puck
-  const renderPuck = () => {
-    if (!gameState?.puck) return null;
-
-    const screenPos = toScreen(gameState.puck.position);
-    const puckColor = getPuckColor();
-
-    return (
-      <Group>
-        {/* Outer glow */}
-        <Circle
-          cx={screenPos.x}
-          cy={screenPos.y}
-          r={GAME_CONFIG.PUCK_RADIUS * SCALE * 1.5}
-          color={puckColor}
-          opacity={0.3}
-        >
-          <BlurMask blur={15} style="normal" />
-        </Circle>
-        {/* Main puck */}
-        <Circle
-          cx={screenPos.x}
-          cy={screenPos.y}
-          r={GAME_CONFIG.PUCK_RADIUS * SCALE}
-          color={puckColor}
-        >
-          <BlurMask blur={2} style="normal" />
-        </Circle>
-        {/* Inner highlight */}
-        <Circle
-          cx={screenPos.x}
-          cy={screenPos.y}
-          r={GAME_CONFIG.PUCK_RADIUS * SCALE * 0.5}
-          color="#FFFFFF"
-          opacity={0.8}
+      <Animated.View style={[styles.container, animatedStyle]}>
+        <canvas
+          ref={canvasRef}
+          style={{
+            width: SCREEN_WIDTH,
+            height: SCREEN_HEIGHT,
+            touchAction: 'none',
+          }}
+          onPointerMove={handlePointerEvent}
+          onPointerDown={handlePointerEvent}
+          onTouchMove={handlePointerEvent}
+          onTouchStart={handlePointerEvent}
         />
-      </Group>
+      </Animated.View>
     );
-  };
+  }
 
-  // Render paddles
-  const renderPaddles = () => {
-    if (!gameState?.players) return null;
-
-    return gameState.players.map((player) => {
-      const screenPos = toScreen(player.paddle.position);
-      const color = player.side === 'bottom' ? COLORS.player1 : COLORS.player2;
-      const isMe = player.side === mySide;
-
-      return (
-        <Group key={player.id}>
-          {/* Outer glow */}
-          <Circle
-            cx={screenPos.x}
-            cy={screenPos.y}
-            r={GAME_CONFIG.PADDLE_RADIUS * SCALE * 1.4}
-            color={color}
-            opacity={isMe ? 0.4 : 0.2}
-          >
-            <BlurMask blur={20} style="normal" />
-          </Circle>
-          {/* Main paddle */}
-          <Circle
-            cx={screenPos.x}
-            cy={screenPos.y}
-            r={GAME_CONFIG.PADDLE_RADIUS * SCALE}
-          >
-            <RadialGradient
-              c={vec(screenPos.x, screenPos.y)}
-              r={GAME_CONFIG.PADDLE_RADIUS * SCALE}
-              colors={[color, `${color}99`]}
-            />
-          </Circle>
-          {/* Inner circle */}
-          <Circle
-            cx={screenPos.x}
-            cy={screenPos.y}
-            r={GAME_CONFIG.PADDLE_RADIUS * SCALE * 0.4}
-            color="#000000"
-            opacity={0.5}
-          />
-        </Group>
-      );
-    });
-  };
-
+  // Fallback for native (placeholder - would need Skia or similar)
   return (
     <Animated.View style={[styles.container, animatedStyle]}>
-      <View
-        style={styles.touchArea}
-        onStartShouldSetResponder={() => true}
-        onMoveShouldSetResponder={() => true}
-        onResponderMove={handleTouch}
-        onResponderGrant={handleTouch}
-      >
-        <Canvas style={styles.canvas}>
-          {renderTable()}
-          {renderTrail()}
-          {renderParticles()}
-          {renderPuck()}
-          {renderPaddles()}
-        </Canvas>
+      <View ref={containerRef} style={styles.touchArea}>
+        <View style={styles.canvas} />
       </View>
     </Animated.View>
   );
