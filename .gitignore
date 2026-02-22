@@ -1,29 +1,2 @@
-# Dependencies
 node_modules/
-
-# Build outputs
-dist/
 .expo/
-*.tsbuildinfo
-
-# IDE
-.vscode/
-.idea/
-
-# Environment variables
-.env
-.env.local
-.env.*.local
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Test
-coverage/
