@@ -12,9 +12,12 @@ import { GameState, Vector2D, CollisionEvent } from '../types/game';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+// Reserve space for scores header
+const AVAILABLE_HEIGHT = SCREEN_HEIGHT * 0.75;
+
 // Calculate scale to fit game on screen
 const GAME_ASPECT_RATIO = GAME_CONFIG.TABLE_WIDTH / GAME_CONFIG.TABLE_HEIGHT;
-const SCREEN_ASPECT_RATIO = SCREEN_WIDTH / SCREEN_HEIGHT;
+const SCREEN_ASPECT_RATIO = SCREEN_WIDTH / AVAILABLE_HEIGHT;
 
 let CANVAS_WIDTH: number;
 let CANVAS_HEIGHT: number;
@@ -23,13 +26,11 @@ let OFFSET_X: number;
 let OFFSET_Y: number;
 
 if (SCREEN_ASPECT_RATIO > GAME_ASPECT_RATIO) {
-  // Screen is wider than game
-  CANVAS_HEIGHT = SCREEN_HEIGHT * 0.85;
+  CANVAS_HEIGHT = AVAILABLE_HEIGHT * 0.95;
   CANVAS_WIDTH = CANVAS_HEIGHT * GAME_ASPECT_RATIO;
   SCALE = CANVAS_HEIGHT / GAME_CONFIG.TABLE_HEIGHT;
 } else {
-  // Screen is taller than game
-  CANVAS_WIDTH = SCREEN_WIDTH * 0.95;
+  CANVAS_WIDTH = SCREEN_WIDTH * 0.92;
   CANVAS_HEIGHT = CANVAS_WIDTH / GAME_ASPECT_RATIO;
   SCALE = CANVAS_WIDTH / GAME_CONFIG.TABLE_WIDTH;
 }
@@ -271,6 +272,58 @@ export function GameCanvas({
     });
   }, []);
 
+  const drawWaitingState = useCallback((ctx: CanvasRenderingContext2D) => {
+    // Draw placeholder paddles and puck when waiting for game
+    const paddleRadius = GAME_CONFIG.PADDLE_RADIUS * SCALE;
+    const puckRadius = GAME_CONFIG.PUCK_RADIUS * SCALE;
+
+    // Bottom paddle (you)
+    const bottomPaddle = { x: OFFSET_X + CANVAS_WIDTH / 2, y: OFFSET_Y + CANVAS_HEIGHT * 0.8 };
+    ctx.save();
+    ctx.shadowColor = COLORS.cyan;
+    ctx.shadowBlur = 20;
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = COLORS.cyan;
+    ctx.beginPath();
+    ctx.arc(bottomPaddle.x, bottomPaddle.y, paddleRadius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Top paddle (opponent)
+    const topPaddle = { x: OFFSET_X + CANVAS_WIDTH / 2, y: OFFSET_Y + CANVAS_HEIGHT * 0.2 };
+    ctx.save();
+    ctx.shadowColor = COLORS.magenta;
+    ctx.shadowBlur = 20;
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = COLORS.magenta;
+    ctx.beginPath();
+    ctx.arc(topPaddle.x, topPaddle.y, paddleRadius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Center puck
+    const center = { x: OFFSET_X + CANVAS_WIDTH / 2, y: OFFSET_Y + CANVAS_HEIGHT / 2 };
+    ctx.save();
+    ctx.shadowColor = COLORS.puck;
+    ctx.shadowBlur = 15;
+    ctx.globalAlpha = 0.6 + Math.sin(Date.now() / 500) * 0.2;
+    ctx.fillStyle = COLORS.puck;
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, puckRadius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // "Waiting" text
+    ctx.save();
+    ctx.font = '16px monospace';
+    ctx.fillStyle = COLORS.violet;
+    ctx.shadowColor = COLORS.violet;
+    ctx.shadowBlur = 10;
+    ctx.textAlign = 'center';
+    ctx.fillText('En attente d\'un adversaire...', OFFSET_X + CANVAS_WIDTH / 2, OFFSET_Y + CANVAS_HEIGHT / 2 + 50);
+    ctx.restore();
+  }, []);
+
   const drawPuck = useCallback((ctx: CanvasRenderingContext2D) => {
     if (!gameState?.puck) return;
 
@@ -364,15 +417,19 @@ export function GameCanvas({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Set canvas size
+    // Set canvas size to fit below scores
     canvas.width = SCREEN_WIDTH;
-    canvas.height = SCREEN_HEIGHT;
+    canvas.height = AVAILABLE_HEIGHT;
 
     const render = () => {
       // Clear canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = COLORS.background;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Recalculate offset to center in available space
+      OFFSET_X = (SCREEN_WIDTH - CANVAS_WIDTH) / 2;
+      OFFSET_Y = (AVAILABLE_HEIGHT - CANVAS_HEIGHT) / 2;
 
       // Update trail
       if (gameState?.puck) {
@@ -405,10 +462,14 @@ export function GameCanvas({
 
       // Draw everything
       drawTable(ctx);
-      drawTrail(ctx);
-      drawParticles(ctx);
-      drawPuck(ctx);
-      drawPaddles(ctx);
+      if (gameState?.puck) {
+        drawTrail(ctx);
+        drawParticles(ctx);
+        drawPuck(ctx);
+        drawPaddles(ctx);
+      } else {
+        drawWaitingState(ctx);
+      }
 
       animationFrameRef.current = requestAnimationFrame(render);
     };
@@ -420,7 +481,7 @@ export function GameCanvas({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [gameState, toScreen, drawTable, drawTrail, drawParticles, drawPuck, drawPaddles]);
+  }, [gameState, toScreen, drawTable, drawTrail, drawParticles, drawPuck, drawPaddles, drawWaitingState]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
@@ -437,7 +498,7 @@ export function GameCanvas({
           ref={canvasRef}
           style={{
             width: SCREEN_WIDTH,
-            height: SCREEN_HEIGHT,
+            height: AVAILABLE_HEIGHT,
             touchAction: 'none',
           }}
           onPointerMove={handlePointerEvent}
