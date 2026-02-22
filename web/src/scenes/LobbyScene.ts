@@ -222,8 +222,14 @@ export class LobbyScene extends Phaser.Scene {
       this.handleRoomCreated(data);
     });
 
-    socket.on('error', (error: { message: string }) => {
-      this.statusText.setText(error.message || 'Error occurred');
+    // Handle room-joined (private games — both creator and joiner)
+    socket.on('room-joined', (data: MatchedData) => {
+      this.handleMatched(data);
+    });
+
+    socket.on('error', (error: string | { message: string }) => {
+      const msg = typeof error === 'string' ? error : error.message || 'Error occurred';
+      this.statusText.setText(msg);
       this.statusText.setColor('#FF0000');
     });
   }
@@ -407,6 +413,7 @@ export class LobbyScene extends Phaser.Scene {
     if (socket) {
       socket.off('matched');
       socket.off('room-created');
+      socket.off('room-joined');
       socket.off('error');
     }
     if (this.animTimer) {
