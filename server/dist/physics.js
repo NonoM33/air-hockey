@@ -73,8 +73,8 @@ function updatePhysics(puck, players, deltaTime) {
                 const paddleInfluence = scaleVector(paddle.velocity, 0.8);
                 puck.velocity = addVectors(reflected, paddleInfluence);
                 // Boost based on paddle speed
-                const speedBoost = Math.max(PADDLE_HIT_BOOST, 1.0 + paddleSpeed * 0.15);
-                puck.velocity = scaleVector(puck.velocity, Math.min(speedBoost, 3.0));
+                const speedBoost = Math.max(PADDLE_HIT_BOOST, 1.0 + paddleSpeed * 0.08);
+                puck.velocity = scaleVector(puck.velocity, Math.min(speedBoost, 2.0));
                 puck.velocity = clampSpeed(puck.velocity, MAX_PUCK_SPEED);
             }
             else {
@@ -176,7 +176,7 @@ function createInitialPuck() {
     const direction = Math.random() > 0.5 ? 1 : -1;
     return {
         position: { x: TABLE_WIDTH / 2, y: TABLE_HEIGHT / 2 },
-        velocity: { x: (Math.random() - 0.5) * 6, y: direction * 10 },
+        velocity: { x: (Math.random() - 0.5) * 3, y: direction * 6 },
         radius: PUCK_RADIUS,
     };
 }
