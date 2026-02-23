@@ -44,122 +44,129 @@ function clampSpeed(velocity, maxSpeed) {
 function updatePhysics(puck, players, deltaTime) {
     const collisions = [];
     let goal = null;
-    // Apply velocity
     const dt = deltaTime / 16.67; // Normalize to 60fps
-    puck.position.x += puck.velocity.x * dt;
-    puck.position.y += puck.velocity.y * dt;
-    // Apply friction
-    puck.velocity.x *= FRICTION;
-    puck.velocity.y *= FRICTION;
-    // Clamp speed
-    puck.velocity = clampSpeed(puck.velocity, MAX_PUCK_SPEED);
-    // Check paddle collisions
-    for (const player of players) {
-        const paddle = player.paddle;
-        const dist = distance(puck.position, paddle.position);
-        const minDist = PUCK_RADIUS + PADDLE_RADIUS;
-        if (dist < minDist) {
-            // Collision detected
-            const normal = normalizeVector(subtractVectors(puck.position, paddle.position));
-            // Use relative velocity (puck - paddle) to check approach
-            const relVelocity = subtractVectors(puck.velocity, paddle.velocity);
-            const relAlongNormal = dotProduct(relVelocity, normal);
-            // Resolve if objects are approaching each other (relative motion)
-            if (relAlongNormal < 0) {
-                // Reflect relative velocity
-                const reflected = subtractVectors(puck.velocity, scaleVector(normal, 2 * relAlongNormal));
-                // Add paddle velocity for momentum transfer
-                const paddleSpeed = vectorLength(paddle.velocity);
-                const paddleInfluence = scaleVector(paddle.velocity, 0.8);
-                puck.velocity = addVectors(reflected, paddleInfluence);
-                // Boost based on paddle speed
-                const speedBoost = Math.max(PADDLE_HIT_BOOST, 1.0 + paddleSpeed * 0.08);
-                puck.velocity = scaleVector(puck.velocity, Math.min(speedBoost, 2.0));
-                puck.velocity = clampSpeed(puck.velocity, MAX_PUCK_SPEED);
-            }
-            else {
-                // Still overlapping but not approaching — just push puck away with paddle momentum
-                if (vectorLength(paddle.velocity) > 1) {
-                    puck.velocity = addVectors(puck.velocity, scaleVector(paddle.velocity, 1.2));
+    // Sub-step physics to prevent tunneling
+    const SUBSTEPS = 3;
+    const subDt = dt / SUBSTEPS;
+    for (let step = 0; step < SUBSTEPS; step++) {
+        // Apply velocity
+        puck.position.x += puck.velocity.x * subDt;
+        puck.position.y += puck.velocity.y * subDt;
+        // Apply friction
+        const frictionPerStep = Math.pow(FRICTION, 1 / SUBSTEPS);
+        puck.velocity.x *= frictionPerStep;
+        puck.velocity.y *= frictionPerStep;
+        // Clamp speed
+        puck.velocity = clampSpeed(puck.velocity, MAX_PUCK_SPEED);
+        // Check paddle collisions
+        for (const player of players) {
+            const paddle = player.paddle;
+            const dist = distance(puck.position, paddle.position);
+            // Slightly generous hitbox for better feel
+            const minDist = PUCK_RADIUS + PADDLE_RADIUS + 4;
+            if (dist < minDist) {
+                // Collision detected
+                const normal = normalizeVector(subtractVectors(puck.position, paddle.position));
+                // Use relative velocity (puck - paddle) to check approach
+                const relVelocity = subtractVectors(puck.velocity, paddle.velocity);
+                const relAlongNormal = dotProduct(relVelocity, normal);
+                // Resolve if objects are approaching each other (relative motion)
+                if (relAlongNormal < 0) {
+                    // Reflect relative velocity
+                    const reflected = subtractVectors(puck.velocity, scaleVector(normal, 2 * relAlongNormal));
+                    // Add paddle velocity for momentum transfer
+                    const paddleSpeed = vectorLength(paddle.velocity);
+                    const paddleInfluence = scaleVector(paddle.velocity, 0.8);
+                    puck.velocity = addVectors(reflected, paddleInfluence);
+                    // Boost based on paddle speed
+                    const speedBoost = Math.max(PADDLE_HIT_BOOST, 1.0 + paddleSpeed * 0.08);
+                    puck.velocity = scaleVector(puck.velocity, Math.min(speedBoost, 2.0));
                     puck.velocity = clampSpeed(puck.velocity, MAX_PUCK_SPEED);
                 }
+                else {
+                    // Still overlapping but not approaching — just push puck away with paddle momentum
+                    if (vectorLength(paddle.velocity) > 1) {
+                        puck.velocity = addVectors(puck.velocity, scaleVector(paddle.velocity, 1.2));
+                        puck.velocity = clampSpeed(puck.velocity, MAX_PUCK_SPEED);
+                    }
+                }
+                // Always separate puck from paddle
+                const overlap = minDist - dist;
+                puck.position = addVectors(puck.position, scaleVector(normal, overlap + 1));
+                collisions.push({
+                    type: 'paddle',
+                    position: { ...puck.position },
+                    velocity: vectorLength(puck.velocity),
+                    playerId: player.id,
+                });
             }
-            // Always separate puck from paddle
-            const overlap = minDist - dist;
-            puck.position = addVectors(puck.position, scaleVector(normal, overlap + 1));
-            collisions.push({
-                type: 'paddle',
-                position: { ...puck.position },
-                velocity: vectorLength(puck.velocity),
-                playerId: player.id,
-            });
         }
-    }
-    // Wall collisions (left/right)
-    if (puck.position.x - PUCK_RADIUS < 0) {
-        puck.position.x = PUCK_RADIUS;
-        puck.velocity.x = -puck.velocity.x * RESTITUTION;
-        collisions.push({
-            type: 'wall',
-            position: { ...puck.position },
-            velocity: vectorLength(puck.velocity),
-        });
-    }
-    else if (puck.position.x + PUCK_RADIUS > TABLE_WIDTH) {
-        puck.position.x = TABLE_WIDTH - PUCK_RADIUS;
-        puck.velocity.x = -puck.velocity.x * RESTITUTION;
-        collisions.push({
-            type: 'wall',
-            position: { ...puck.position },
-            velocity: vectorLength(puck.velocity),
-        });
-    }
-    // Goal zones
-    const goalLeft = (TABLE_WIDTH - GOAL_WIDTH) / 2;
-    const goalRight = (TABLE_WIDTH + GOAL_WIDTH) / 2;
-    const isInGoalX = puck.position.x > goalLeft && puck.position.x < goalRight;
-    // Top wall / goal
-    if (puck.position.y - PUCK_RADIUS < 0) {
-        if (isInGoalX) {
-            // Goal scored on top player!
-            goal = 'top';
-            collisions.push({
-                type: 'goal',
-                position: { ...puck.position },
-                velocity: vectorLength(puck.velocity),
-            });
-        }
-        else {
-            puck.position.y = PUCK_RADIUS;
-            puck.velocity.y = -puck.velocity.y * RESTITUTION;
+        // Wall collisions (left/right)
+        if (puck.position.x - PUCK_RADIUS < 0) {
+            puck.position.x = PUCK_RADIUS;
+            puck.velocity.x = -puck.velocity.x * RESTITUTION;
             collisions.push({
                 type: 'wall',
                 position: { ...puck.position },
                 velocity: vectorLength(puck.velocity),
             });
         }
-    }
-    // Bottom wall / goal
-    if (puck.position.y + PUCK_RADIUS > TABLE_HEIGHT) {
-        if (isInGoalX) {
-            // Goal scored on bottom player!
-            goal = 'bottom';
-            collisions.push({
-                type: 'goal',
-                position: { ...puck.position },
-                velocity: vectorLength(puck.velocity),
-            });
-        }
-        else {
-            puck.position.y = TABLE_HEIGHT - PUCK_RADIUS;
-            puck.velocity.y = -puck.velocity.y * RESTITUTION;
+        else if (puck.position.x + PUCK_RADIUS > TABLE_WIDTH) {
+            puck.position.x = TABLE_WIDTH - PUCK_RADIUS;
+            puck.velocity.x = -puck.velocity.x * RESTITUTION;
             collisions.push({
                 type: 'wall',
                 position: { ...puck.position },
                 velocity: vectorLength(puck.velocity),
             });
         }
-    }
+        // Goal zones
+        const goalLeft = (TABLE_WIDTH - GOAL_WIDTH) / 2;
+        const goalRight = (TABLE_WIDTH + GOAL_WIDTH) / 2;
+        const isInGoalX = puck.position.x > goalLeft && puck.position.x < goalRight;
+        // Top wall / goal
+        if (puck.position.y - PUCK_RADIUS < 0) {
+            if (isInGoalX) {
+                // Goal scored on top player!
+                goal = 'top';
+                collisions.push({
+                    type: 'goal',
+                    position: { ...puck.position },
+                    velocity: vectorLength(puck.velocity),
+                });
+            }
+            else {
+                puck.position.y = PUCK_RADIUS;
+                puck.velocity.y = -puck.velocity.y * RESTITUTION;
+                collisions.push({
+                    type: 'wall',
+                    position: { ...puck.position },
+                    velocity: vectorLength(puck.velocity),
+                });
+            }
+        }
+        // Bottom wall / goal
+        if (puck.position.y + PUCK_RADIUS > TABLE_HEIGHT) {
+            if (isInGoalX) {
+                // Goal scored on bottom player!
+                goal = 'bottom';
+                collisions.push({
+                    type: 'goal',
+                    position: { ...puck.position },
+                    velocity: vectorLength(puck.velocity),
+                });
+            }
+            else {
+                puck.position.y = TABLE_HEIGHT - PUCK_RADIUS;
+                puck.velocity.y = -puck.velocity.y * RESTITUTION;
+                collisions.push({
+                    type: 'wall',
+                    position: { ...puck.position },
+                    velocity: vectorLength(puck.velocity),
+                });
+            }
+        }
+    } // end substep loop
     return { puck, goal, collisions };
 }
 function resetPuck(scoredOn) {

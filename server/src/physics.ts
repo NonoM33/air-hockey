@@ -60,23 +60,31 @@ export function updatePhysics(puck: Puck, players: Player[], deltaTime: number):
   const collisions: CollisionEvent[] = [];
   let goal: 'top' | 'bottom' | null = null;
 
-  // Apply velocity
   const dt = deltaTime / 16.67; // Normalize to 60fps
-  puck.position.x += puck.velocity.x * dt;
-  puck.position.y += puck.velocity.y * dt;
 
-  // Apply friction
-  puck.velocity.x *= FRICTION;
-  puck.velocity.y *= FRICTION;
+  // Sub-step physics to prevent tunneling
+  const SUBSTEPS = 3;
+  const subDt = dt / SUBSTEPS;
 
-  // Clamp speed
-  puck.velocity = clampSpeed(puck.velocity, MAX_PUCK_SPEED);
+  for (let step = 0; step < SUBSTEPS; step++) {
+    // Apply velocity
+    puck.position.x += puck.velocity.x * subDt;
+    puck.position.y += puck.velocity.y * subDt;
+
+    // Apply friction
+    const frictionPerStep = Math.pow(FRICTION, 1 / SUBSTEPS);
+    puck.velocity.x *= frictionPerStep;
+    puck.velocity.y *= frictionPerStep;
+
+    // Clamp speed
+    puck.velocity = clampSpeed(puck.velocity, MAX_PUCK_SPEED);
 
   // Check paddle collisions
   for (const player of players) {
     const paddle = player.paddle;
     const dist = distance(puck.position, paddle.position);
-    const minDist = PUCK_RADIUS + PADDLE_RADIUS;
+    // Slightly generous hitbox for better feel
+    const minDist = PUCK_RADIUS + PADDLE_RADIUS + 4;
 
     if (dist < minDist) {
       // Collision detected
@@ -190,6 +198,8 @@ export function updatePhysics(puck: Puck, players: Player[], deltaTime: number):
       });
     }
   }
+
+  } // end substep loop
 
   return { puck, goal, collisions };
 }
